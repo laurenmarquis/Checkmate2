@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, MonitorNotification, CheckSnapshot } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -22,7 +22,7 @@ type MonitorDocumentBase = Omit<
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
-	notifications: Types.ObjectId[];
+	notifications: MonitorNotification[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -34,6 +34,20 @@ interface MonitorDocument extends MonitorDocumentBase {
 	createdAt: Date;
 	updatedAt: Date;
 }
+
+const monitorNotificationSchema = new Schema<MonitorNotification>(
+	{
+		notificationId: {
+			type: String,
+			required: true,
+		},
+		escalation: {
+			delayMinutes: { type: Number },
+			channelId: { type: String },
+		},
+	},
+	{ _id: false }
+);
 
 const snapshotTimingPhasesSchema = new Schema<GotTimings["phases"]>(
 	{
@@ -278,12 +292,7 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: undefined,
 		},
-		notifications: [
-			{
-				type: Schema.Types.ObjectId,
-				ref: "Notification",
-			},
-		],
+		notifications: [monitorNotificationSchema],
 		secret: {
 			type: String,
 		},

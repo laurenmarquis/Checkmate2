@@ -6,6 +6,7 @@ import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { getTestMessage } from "@/service/infrastructure/notificationProviders/utils.js";
 import { ILogger } from "@/utils/logger.js";
 import { AlertPagerDutyPayload } from "@/types/index.js";
+import type { Monitor } from "@/types/monitor.js";
 
 export class PagerDutyProvider implements INotificationProvider {
 	private logger: ILogger;
@@ -140,4 +141,32 @@ export class PagerDutyProvider implements INotificationProvider {
 			},
 		};
 	}
+
+	sendEscalation = async (notification: Notification, monitor: Monitor, message: string): Promise<boolean> => {
+		try {
+			await got.post("https://events.pagerduty.com/v2/enqueue", {
+				json: {
+					routing_key: notification.address,
+					event_action: "trigger",
+					payload: {
+						summary: message,
+						severity: "critical",
+						source: monitor.url,
+						timestamp: new Date().toISOString(),
+					},
+				},
+				responseType: "json",
+			});
+			return true;
+		} catch (error) {
+			const err = error as Error;
+			this.logger.warn({
+				message: "PagerDuty escalation failed",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+				stack: err?.stack,
+			});
+			return false;
+		}
+	};
 }

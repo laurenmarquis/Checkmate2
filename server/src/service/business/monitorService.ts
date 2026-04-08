@@ -1,5 +1,5 @@
 import { NormalizeData, NormalizeDataUptimeDetails } from "@/utils/dataUtils.js";
-import { type Monitor } from "@/types/index.js";
+import type { Monitor, MonitorNotification } from "@/types/monitor.js";
 import type {
 	MonitorType,
 	MonitorsWithChecksByTeamIdResult,
@@ -80,7 +80,7 @@ export interface IMonitorService {
 	deleteAllMonitors(args: { teamId: string }): Promise<number>;
 
 	// notifications
-	updateNotifications(args: { teamId: string; monitorIds: string[]; notificationIds: string[]; action: "add" | "remove" | "set" }): Promise<number>;
+	updateNotifications(args: { teamId: string; monitorIds: string[]; notifications: MonitorNotification[]; action: "add" | "remove" | "set" }): Promise<number>;
 
 	// other
 	exportMonitorsToJSON(args: { teamId: string }): Promise<Monitor[]>;
@@ -445,15 +445,15 @@ export class MonitorService implements IMonitorService {
 	updateNotifications = async ({
 		teamId,
 		monitorIds,
-		notificationIds,
+		notifications,
 		action,
 	}: {
 		teamId: string;
 		monitorIds: string[];
-		notificationIds: string[];
+		notifications: MonitorNotification[];
 		action: "add" | "remove" | "set";
 	}): Promise<number> => {
-		const modifiedCount = await this.monitorsRepository.updateNotifications(teamId, monitorIds, notificationIds, action);
+		const modifiedCount = await this.monitorsRepository.updateNotifications(teamId, monitorIds, notifications, action);
 
 		// If notifications were updated, we should update the jobs in the queue
 		if (modifiedCount > 0) {
@@ -568,6 +568,7 @@ export class MonitorService implements IMonitorService {
 			teamId,
 			userId,
 			recentChecks: [],
+			notifications: monitor.notifications.map((id) => ({ notificationId: id })),
 			createdAt: "",
 			updatedAt: "",
 		}));

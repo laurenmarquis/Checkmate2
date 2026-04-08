@@ -8,6 +8,7 @@ import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import type { ISuperSimpleQueue } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -39,23 +40,30 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private jobQueue: ISuperSimpleQueue | null;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		jobQueue?: ISuperSimpleQueue
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.jobQueue = jobQueue ?? null;
 	}
 
 	get serviceName() {
 		return IncidentService.SERVICE_NAME;
+	}
+
+	setJobQueue(jobQueue: ISuperSimpleQueue) {
+		this.jobQueue = jobQueue;
 	}
 
 	handleIncident = async (
@@ -83,15 +91,23 @@ export class IncidentService implements IIncidentService {
 					message = this.buildThresholdBreachMessage(monitor, monitorStatusResponse);
 				}
 
-				const incident = {
+				const incidentData = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
-					startTime: Date.now().toString(),
 					status: true,
+					startTime: Date.now().toString(),
+					endTime: null,
 					statusCode,
 					message,
+					resolutionType: null,
 				};
-				return await this.incidentsRepository.create(incident);
+
+				const incident = await this.incidentsRepository.create(incidentData);
+
+				// Schedule escalation jobs
+				await this.scheduleEscalationJobs(incident, monitor);
+
+				return incident;
 			}
 		}
 
@@ -261,6 +277,33 @@ export class IncidentService implements IIncidentService {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			throw error;
+		}
+	};
+
+	private scheduleEscalationJobs = async (incident: Incident, monitor: Monitor) => {
+		if (!this.jobQueue) {
+			this.logger.warn({
+				service: SERVICE_NAME,
+				method: "scheduleEscalationJobs",
+				message: "Job queue not set, skipping escalation jobs",
+			});
+			return;
+		}
+		for (const notification of monitor.notifications) {
+			if (notification.escalation) {
+				const delayMs = notification.escalation.delayMinutes * 60 * 1000;
+				const jobId = `escalation-${incident.id}-${notification.notificationId}`;
+				try {
+					await this.jobQueue.addEscalationJob(jobId, incident.id, monitor.id, notification.escalation.channelId, notification.escalation.delayMinutes, delayMs, incident.teamId);
+				} catch (error) {
+					this.logger.error({
+						message: `Failed to schedule escalation job for incident ${incident.id}`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalationJobs",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}
 		}
 	};
 }

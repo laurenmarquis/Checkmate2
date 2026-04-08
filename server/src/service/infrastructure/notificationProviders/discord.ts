@@ -5,6 +5,7 @@ import { getTestMessage } from "@/service/infrastructure/notificationProviders/u
 import type { NotificationMessage, NotificationSeverity } from "@/types/notificationMessage.js";
 import got from "got";
 import { ILogger } from "@/utils/logger.js";
+import type { Monitor } from "@/types/monitor.js";
 
 export class DiscordProvider implements INotificationProvider {
 	private logger: ILogger;
@@ -68,7 +69,35 @@ export class DiscordProvider implements INotificationProvider {
 			return false;
 		}
 	}
+	async sendEscalation(notification: Notification, monitor: Monitor, message: string): Promise<boolean> {
+		if (!notification.address) {
+			this.logger.warn({
+				message: "Discord notification missing webhook URL",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+			});
+			return false;
+		}
 
+		try {
+			await got.post(notification.address, {
+				json: { content: message },
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
+			return true;
+		} catch (error) {
+			const err = error as Error;
+			this.logger.warn({
+				message: "Discord escalation failed",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+				stack: err?.stack,
+			});
+			return false;
+		}
+	}
 	private buildDiscordEmbed(message: NotificationMessage): AlertDiscordPayload {
 		const colorMap: Record<NotificationSeverity, number> = {
 			critical: 0xdc2626, // red-600

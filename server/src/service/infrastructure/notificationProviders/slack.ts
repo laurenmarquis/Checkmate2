@@ -5,6 +5,7 @@ import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { getTestMessage } from "@/service/infrastructure/notificationProviders/utils.js";
 import got, { HTTPError } from "got";
 import { ILogger } from "@/utils/logger.js";
+import type { Monitor } from "@/types/monitor.js";
 
 export class SlackProvider implements INotificationProvider {
 	private logger: ILogger;
@@ -195,4 +196,29 @@ export class SlackProvider implements INotificationProvider {
 			],
 		};
 	}
+
+	sendEscalation = async (notification: Notification, monitor: Monitor, message: string): Promise<boolean> => {
+		if (!notification.address) {
+			return false;
+		}
+
+		try {
+			await got.post(notification.address, {
+				json: { text: message },
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
+			return true;
+		} catch (error) {
+			const err = error as HTTPError;
+			this.logger.warn({
+				message: "Slack escalation failed",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+				stack: err?.stack,
+			});
+			return false;
+		}
+	};
 }

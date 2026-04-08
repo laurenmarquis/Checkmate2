@@ -15,6 +15,8 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendEscalation: (notification: Notification, monitor: Monitor, message: string) => Promise<boolean>;
+
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -108,7 +110,7 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = (monitor.notifications ?? []).map(n => n.notificationId);
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -130,6 +132,42 @@ export class NotificationsService implements INotificationsService {
 		}
 		// Return true if all notifications succeeded
 		return succeeded === notifications.length;
+	};
+
+	sendEscalation = async (notification: Notification, monitor: Monitor, message: string): Promise<boolean> => {
+		try {
+			switch (notification.type) {
+				case "email":
+					return await this.emailProvider.sendEscalation(notification, monitor, message);
+				case "slack":
+					return await this.slackProvider.sendEscalation(notification, monitor, message);
+				case "discord":
+					return await this.discordProvider.sendEscalation(notification, monitor, message);
+				case "webhook":
+					return await this.webhookProvider.sendEscalation(notification, monitor, message);
+				case "pager_duty":
+					return await this.pagerDutyProvider.sendEscalation(notification, monitor, message);
+				case "matrix":
+					return await this.matrixProvider.sendEscalation(notification, monitor, message);
+				case "teams":
+					return await this.teamsProvider.sendEscalation(notification, monitor, message);
+				default:
+					this.logger.warn({
+						message: `Unknown notification type: ${notification.type}`,
+						service: SERVICE_NAME,
+						method: "sendEscalation",
+					});
+					return false;
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {

@@ -5,6 +5,7 @@ import { buildTestEmail } from "@/service/infrastructure/notificationProviders/u
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import type { ILogger } from "@/utils/logger.js";
 import { IEmailService } from "@/service/infrastructure/emailService.js";
+import type { Monitor } from "@/types/monitor.js";
 export class EmailProvider implements INotificationProvider {
 	private emailService: IEmailService;
 	private logger: ILogger;
@@ -38,8 +39,8 @@ export class EmailProvider implements INotificationProvider {
 
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
-			this.logger.warn({
-				message: "Email test alert failed",
+			this.logger.error({
+				message: "Email test alert failed - check email settings are configured",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
@@ -50,6 +51,11 @@ export class EmailProvider implements INotificationProvider {
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
 		if (!notification.address) {
+			this.logger.warn({
+				message: "Missing address for email notification",
+				service: SERVICE_NAME,
+				method: "sendMessage",
+			});
 			return false;
 		}
 
@@ -67,10 +73,35 @@ export class EmailProvider implements INotificationProvider {
 
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
-			this.logger.warn({
-				message: "Email notification failed",
+			this.logger.error({
+				message: "Email notification failed - check email settings are configured",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+			});
+			return false;
+		}
+		return true;
+	}
+
+	async sendEscalation(notification: Notification, monitor: Monitor, message: string): Promise<boolean> {
+		if (!notification.address) {
+			this.logger.warn({
+				message: "Missing address for email escalation",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+			});
+			return false;
+		}
+
+		const subject = `Escalation: Monitor ${monitor.name} is down`;
+		const html = `<p>${message.replace(/\n/g, '<br>')}</p>`;
+
+		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
+		if (!messageId) {
+			this.logger.error({
+				message: "Email escalation failed - check email settings are configured",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
 			});
 			return false;
 		}

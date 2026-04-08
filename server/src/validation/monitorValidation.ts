@@ -3,6 +3,14 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const monitorNotificationSchema = z.object({
+	notificationId: z.string().min(1, "Notification ID is required"),
+	escalation: z.object({
+		delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+		channelId: z.string().min(1, "Channel ID is required"),
+	}).optional(),
+});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -66,7 +74,7 @@ export const createMonitorBodyValidation = z.object({
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
+	notifications: z.array(monitorNotificationSchema).optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -88,7 +96,7 @@ export const editMonitorBodyValidation = z.object({
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
+	notifications: z.array(monitorNotificationSchema).optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),

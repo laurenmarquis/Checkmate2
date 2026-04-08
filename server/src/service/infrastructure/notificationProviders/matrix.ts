@@ -5,6 +5,7 @@ import type { AlertMatrixPayload, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { getTestMessage } from "@/service/infrastructure/notificationProviders/utils.js";
 import { ILogger } from "@/utils/logger.js";
+import type { Monitor } from "@/types/monitor.js";
 
 export class MatrixProvider implements INotificationProvider {
 	private logger: ILogger;
@@ -174,7 +175,38 @@ export class MatrixProvider implements INotificationProvider {
 			htmlText: htmlLines.join(""),
 		};
 	}
+	sendEscalation = async (notification: Notification, monitor: Monitor, message: string): Promise<boolean> => {
+		const { homeserverUrl, accessToken, roomId } = notification;
 
+		if (!homeserverUrl || !accessToken || !roomId) {
+			return false;
+		}
+
+		const url = `${homeserverUrl}/_matrix/client/v3/rooms/${roomId}/send/m.room.message?access_token=${accessToken}`;
+		const body = {
+			msgtype: "m.text",
+			body: message,
+		};
+
+		try {
+			await got.post(url, {
+				json: body,
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
+			return true;
+		} catch (error) {
+			const err = error as Error;
+			this.logger.warn({
+				message: "Matrix escalation failed",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+				stack: err?.stack,
+			});
+			return false;
+		}
+	};
 	/**
 	 * Escape HTML special characters for safe rendering
 	 */

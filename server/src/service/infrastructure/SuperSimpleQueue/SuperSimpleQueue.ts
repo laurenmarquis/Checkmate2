@@ -43,6 +43,7 @@ export interface ISuperSimpleQueue {
 	readonly serviceName: string;
 	init(): Promise<boolean>;
 	addJob(monitorId: string, monitor: Monitor): Promise<void>;
+	addEscalationJob(jobId: string, incidentId: string, monitorId: string, channelId: string, delayMinutes: number, delayMs: number, teamId: string): Promise<void>;
 	deleteJob(monitor: Monitor): Promise<void>;
 	pauseJob(monitor: Monitor): Promise<void>;
 	resumeJob(monitor: Monitor): Promise<void>;
@@ -91,6 +92,7 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 			this.scheduler.addTemplate("monitor-job", this.helper.getHeartbeatJob());
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
+			this.scheduler.addTemplate("escalation-job", this.helper.getEscalationJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
 			const monitors = await this.monitorsRepository.findAll();
@@ -142,6 +144,16 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 				data: monitor,
 			});
 		}
+	};
+
+	addEscalationJob = async (jobId: string, incidentId: string, monitorId: string, channelId: string, delayMinutes: number, delayMs: number, teamId: string) => {
+		this.scheduler.addJob({
+			id: jobId,
+			template: "escalation-job",
+			active: true,
+			data: { incidentId, monitorId, channelId, delayMinutes, teamId },
+			startAt: Date.now() + delayMs,
+		});
 	};
 
 	deleteJob = async (monitor: Monitor) => {

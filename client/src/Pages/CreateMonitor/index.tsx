@@ -710,8 +710,9 @@ const CreateMonitorPage = () => {
 								...n,
 								name: n.notificationName,
 							}));
+							const selectedNotificationIds = (field.value ?? []).map((n: any) => n.notificationId);
 							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
+								selectedNotificationIds.includes(n.id)
 							);
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
@@ -721,43 +722,130 @@ const CreateMonitorPage = () => {
 										value={selectedNotifications}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
+											const newNotifications = newValue.map((n) => {
+												// Keep existing escalation if already set
+												const existing = (field.value ?? []).find((mn: any) => mn.notificationId === n.id);
+												return existing || { notificationId: n.id };
+											});
+											field.onChange(newNotifications);
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
-									{selectedNotifications.length > 0 && (
-										<Stack
-											flex={1}
-											width="100%"
-										>
-											{selectedNotifications.map((notification, index) => (
-												<Stack
-													direction="row"
-													alignItems="center"
-													key={notification.id}
-													width="100%"
-												>
-													<Typography flexGrow={1}>
-														{notification.notificationName}
-													</Typography>
-													<IconButton
-														size="small"
-														onClick={() => {
-															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
-																)
-															);
-														}}
-														aria-label="Remove notification"
-													>
-														<Trash2 size={16} />
-													</IconButton>
-													{index < selectedNotifications.length - 1 && <Divider />}
-												</Stack>
-											))}
+									{(field.value ?? []).length > 0 && (
+										<Stack spacing={theme.spacing(LAYOUT.SM)} width="100%">
+											{(field.value ?? []).map((monitorNotification: any) => {
+												const notification = notifications?.find(n => n.id === monitorNotification.notificationId);
+												return (
+													<Stack key={monitorNotification.notificationId} direction="row" alignItems="center" width="100%">
+														<Typography flexGrow={1}>
+															{notification?.notificationName || monitorNotification.notificationId}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(mn: any) => mn.notificationId !== monitorNotification.notificationId
+																	)
+																);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+													</Stack>
+												);
+											})}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Settings"
+				subtitle="Configure escalation rules for selected notifications"
+				rightContent={
+					<Controller
+						name="notifications"
+						control={control}
+						render={({ field }) => {
+							if ((field.value ?? []).length === 0) {
+								return (
+									<Typography color="text.secondary">
+										Select notifications above to configure escalations
+									</Typography>
+								);
+							}
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.SM)} width="100%">
+									{(field.value ?? []).map((monitorNotification: any, index: number) => {
+										const notification = notifications?.find(n => n.id === monitorNotification.notificationId);
+										return (
+											<Stack key={monitorNotification.notificationId} spacing={theme.spacing(LAYOUT.SM)} p={2} border={1} borderColor="divider" borderRadius={1}>
+												<Typography variant="subtitle2">
+													{notification?.notificationName || monitorNotification.notificationId}
+												</Typography>
+												<Stack direction="row" spacing={theme.spacing(LAYOUT.SM)} alignItems="center">
+													<TextField
+														label="Escalation delay (minutes)"
+														type="number"
+														value={monitorNotification.escalation?.delayMinutes || ""}
+														onChange={(e) => {
+															const delayMinutes = parseInt(e.target.value) || undefined;
+															const newValue = [...(field.value ?? [])];
+															if (delayMinutes) {
+																newValue[index] = {
+																	...newValue[index],
+																	escalation: {
+																		delayMinutes,
+																		channelId: newValue[index].escalation?.channelId || "",
+																	},
+																};
+															} else {
+																newValue[index] = {
+																	notificationId: newValue[index].notificationId,
+																};
+															}
+															field.onChange(newValue);
+														}}
+														size="small"
+														sx={{ width: 200 }}
+													/>
+													<Select
+														value={monitorNotification.escalation?.channelId || ""}
+														onChange={(e) => {
+															const channelId = e.target.value;
+															const newValue = [...(field.value ?? [])];
+															newValue[index] = {
+																...newValue[index],
+																escalation: {
+																	delayMinutes: newValue[index].escalation?.delayMinutes || 1,
+																	channelId,
+																},
+															};
+															field.onChange(newValue);
+														}}
+														size="small"
+														sx={{ width: 200 }}
+														displayEmpty
+													>
+														<MenuItem value="">
+															<em>Select escalation channel</em>
+														</MenuItem>
+														{notifications?.map((n) => (
+															<MenuItem key={n.id} value={n.id}>
+																{n.notificationName}
+															</MenuItem>
+														))}
+													</Select>
+												</Stack>
+											</Stack>
+										);
+									})}
 								</Stack>
 							);
 						}}

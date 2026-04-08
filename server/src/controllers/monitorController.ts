@@ -423,16 +423,16 @@ class MonitorController implements IMonitorController {
 			updateNotificationsValidation.parse(req.body);
 
 			const teamId = requireTeamId(req.user?.teamId);
-			const { monitorIds, notificationIds, action } = req.body;
+			const { monitorIds, notifications, action } = req.body;
 
 			// Verify all requested notification IDs actually belong to this team
 			const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
 			const validNotificationIds = teamNotifications.map((n) => n.id);
 
-			const invalidIds = notificationIds.filter((id: string) => !validNotificationIds.includes(id));
+			const invalidIds = notifications.filter((n: any) => !validNotificationIds.includes(n.notificationId));
 			if (invalidIds.length > 0) {
 				throw new AppError({
-					message: `The following notification IDs are invalid or do not belong to your team: ${invalidIds.join(", ")}`,
+					message: `The following notification IDs are invalid or do not belong to your team: ${invalidIds.map((n: any) => n.notificationId).join(", ")}`,
 					status: 403,
 				});
 			}
@@ -440,7 +440,7 @@ class MonitorController implements IMonitorController {
 			const modifiedCount = await this.monitorService.updateNotifications({
 				teamId,
 				monitorIds,
-				notificationIds,
+				notifications,
 				action,
 			});
 

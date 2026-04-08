@@ -5,6 +5,7 @@ import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { getTestMessage } from "@/service/infrastructure/notificationProviders/utils.js";
 import type { ILogger } from "@/utils/logger.js";
 import got, { HTTPError } from "got";
+import type { Monitor } from "@/types/monitor.js";
 
 // Types for Adaptive Card elements
 type TextBlock = {
@@ -271,4 +272,49 @@ export class TeamsProvider implements INotificationProvider {
 			...(actions.length > 0 ? { actions } : {}),
 		};
 	}
+
+	sendEscalation = async (notification: Notification, monitor: Monitor, message: string): Promise<boolean> => {
+		if (!notification.address) {
+			return false;
+		}
+
+		try {
+			await got.post(notification.address, {
+				json: {
+					type: "message",
+					attachments: [
+						{
+							contentType: "application/vnd.microsoft.card.adaptive",
+							contentUrl: null,
+							content: {
+								type: "AdaptiveCard",
+								$schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+								version: "1.4",
+								body: [
+									{
+										type: "TextBlock",
+										text: message,
+										wrap: true,
+									},
+								],
+							},
+						},
+					],
+				},
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
+			return true;
+		} catch (error) {
+			const err = error as HTTPError;
+			this.logger.warn({
+				message: "Teams escalation failed",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+				stack: err?.stack,
+			});
+			return false;
+		}
+	};
 }

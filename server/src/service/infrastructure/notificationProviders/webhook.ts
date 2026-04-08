@@ -5,6 +5,7 @@ import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { getTestMessage } from "@/service/infrastructure/notificationProviders/utils.js";
 import got from "got";
 import { ILogger } from "@/utils/logger.js";
+import type { Monitor } from "@/types/monitor.js";
 
 export class WebhookProvider implements INotificationProvider {
 	private logger: ILogger;
@@ -116,6 +117,31 @@ export class WebhookProvider implements INotificationProvider {
 				message: "Webhook test alert failed",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
+				stack: err?.stack,
+			});
+			return false;
+		}
+	};
+
+	sendEscalation = async (notification: Notification, monitor: Monitor, message: string): Promise<boolean> => {
+		if (!notification.address) {
+			return false;
+		}
+
+		try {
+			await got.post(notification.address, {
+				json: { text: message },
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
+			return true;
+		} catch (error) {
+			const err = error as Error;
+			this.logger.warn({
+				message: "Webhook escalation failed",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
 				stack: err?.stack,
 			});
 			return false;
