@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotification: (monitor: Monitor, incident: any, channelId: string) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -68,8 +69,8 @@ export class NotificationsService implements INotificationsService {
 	private send = async (
 		notification: Notification,
 		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
+		monitorStatusResponse: MonitorStatusResponse | null,
+		decision: MonitorActionDecision | null,
 		notificationMessage: NotificationMessage | undefined
 	): Promise<boolean> => {
 		if (!notificationMessage) {
@@ -126,6 +127,14 @@ export class NotificationsService implements INotificationsService {
 				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
 				service: SERVICE_NAME,
 				method: "sendNotifications",
+				details: { monitorId: monitor.id, total: notifications.length },
+			});
+		} else if (notifications.length > 0) {
+			this.logger.info({
+				message: `All ${notifications.length} notifications sent successfully`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+				details: { monitorId: monitor.id },
 			});
 		}
 		// Return true if all notifications succeeded
@@ -139,6 +148,42 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalationNotification = async (monitor: Monitor, incident: Incident, channelId: string) => {
+		const notification = await this.notificationsRepository.findById(channelId, monitor.teamId);
+		if (!notification) {
+			this.logger.warn({
+				message: `Escalation channel ${channelId} not found`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotification",
+				details: { monitorId: monitor.id, incidentId: incident.id },
+			});
+			return false;
+		}
+
+		// Build escalation message
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, incident, clientHost);
+
+		const result = await this.send(notification, monitor, null, null, escalationMessage);
+		if (result) {
+			this.logger.info({
+				message: "Escalation notification sent successfully",
+				service: SERVICE_NAME,
+				method: "handleEscalationNotification",
+				details: { monitorId: monitor.id, incidentId: incident.id, notificationId: notification.id },
+			});
+		} else {
+			this.logger.warn({
+				message: "Escalation notification failed",
+				service: SERVICE_NAME,
+				method: "handleEscalationNotification",
+				details: { monitorId: monitor.id, incidentId: incident.id, notificationId: notification.id },
+			});
+		}
+		return result;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
@@ -169,8 +214,19 @@ export class NotificationsService implements INotificationsService {
 		const succeeded = outcomes.filter(Boolean).length;
 		const failed = outcomes.length - succeeded;
 		if (failed > 0) {
+			this.logger.warn({
+				message: `Test notifications completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "testAllNotifications",
+				details: { total: notifications.length },
+			});
 			return false;
 		}
+		this.logger.info({
+			message: `All ${notifications.length} test notifications sent successfully`,
+			service: SERVICE_NAME,
+			method: "testAllNotifications",
+		});
 		return true;
 	};
 
