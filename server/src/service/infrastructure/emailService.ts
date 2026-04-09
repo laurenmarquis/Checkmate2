@@ -92,6 +92,12 @@ export class EmailService implements IEmailService {
 		try {
 			const mjml = this.templateLookup[template]?.(context);
 			if (!mjml) {
+				this.logger.error({
+					message: `Template ${template} not found or compilation failed`,
+					service: SERVICE_NAME,
+					method: "buildEmail",
+					details: { template, availableTemplates: Object.keys(this.templateLookup) },
+				});
 				throw new Error(`Template ${template} not found`);
 			}
 			const html = await this.mjml2html(mjml);
@@ -102,6 +108,7 @@ export class EmailService implements IEmailService {
 				service: SERVICE_NAME,
 				method: "buildEmail",
 				stack: error instanceof Error ? error.stack : undefined,
+				details: { template, context },
 			});
 		}
 	};

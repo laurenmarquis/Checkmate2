@@ -50,6 +50,12 @@ export class EmailProvider implements INotificationProvider {
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
 		if (!notification.address) {
+			this.logger.warn({
+				message: "Missing address for email notification",
+				service: SERVICE_NAME,
+				method: "sendMessage",
+				details: { notificationId: notification.id },
+			});
 			return false;
 		}
 
@@ -61,6 +67,7 @@ export class EmailProvider implements INotificationProvider {
 				message: "Failed to build email content",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { notificationId: notification.id, messageType: message.type },
 			});
 			return false;
 		}
@@ -71,9 +78,17 @@ export class EmailProvider implements INotificationProvider {
 				message: "Email notification failed",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { notificationId: notification.id, address: notification.address },
 			});
 			return false;
 		}
+
+		this.logger.info({
+			message: "Email notification sent successfully",
+			service: SERVICE_NAME,
+			method: "sendMessage",
+			details: { notificationId: notification.id, messageId },
+		});
 		return true;
 	}
 
@@ -114,6 +129,14 @@ export class EmailProvider implements INotificationProvider {
 		});
 
 		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
+
+		if (!html) {
+			this.logger.warn({
+				message: "Failed to build email content - buildEmail returned undefined",
+				service: SERVICE_NAME,
+				method: "buildEmailFromMessage",
+			});
+		}
 
 		return html;
 	}

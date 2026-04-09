@@ -30,6 +30,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -455,4 +456,57 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Starting escalation check",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+
+				// Find all active incidents
+				const activeIncidents = await this.incidentsRepository.findAllActiveIncidents();
+
+				for (const incident of activeIncidents) {
+					// Get the monitor for this incident
+					const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+					if (!monitor || !monitor.escalation || !monitor.escalation.delayMinutes || !monitor.escalation.channelId) {
+						continue;
+					}
+
+					// Check if the incident has been active for longer than delayMinutes
+					const incidentStartTime = new Date(incident.startTime).getTime();
+					const now = Date.now();
+					const delayMs = monitor.escalation.delayMinutes * 60 * 1000;
+
+					if (now - incidentStartTime > delayMs) {
+						// Trigger escalation notification
+						this.logger.info({
+							message: `Triggering escalation for incident ${incident.id} on monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "getEscalationJob",
+						});
+
+						// Send notification to the escalation channel
+						await this.notificationsService.handleEscalationNotification(monitor, incident, monitor.escalation.channelId);
+					}
+				}
+
+				this.logger.debug({
+					message: "Escalation check completed",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
 }
